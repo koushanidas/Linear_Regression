@@ -1,0 +1,341 @@
+###572 group project ###
+
+#Hypothesis 1: Check if Price of Brooklyn is different than Price of Queens
+#Reading NYC Airbnb data set as CSV file
+NYC_data <- read.csv("D:/AB_NYC_2019.csv",header = TRUE)
+NYC <- as.data.frame(NYC_data)
+head(NYC,10)
+mydata<-NYC_data
+neighbourhood<-as.factor(mydata$neighbourhood_group) 
+#1=bronx 2=brooklyn 3=manhattan 4=queens 5=SI
+n<-length(mydata$price)
+mymatrix<-matrix(c(neighbourhood,mydata$price),ncol = 2,byrow = F)
+## Subsetting price of Brooklyn and price of Queens from dataset
+price_brooklyn<-mymatrix[which(mymatrix[,1]==2),]
+price_queens<-mymatrix[which(mymatrix[,1]==4),]
+colnames(price_brooklyn) <- c("1","price_brooklyn") 
+col.df <- as.data.frame(price_brooklyn)
+col.df<-head(col.df,50)
+colnames(price_queens) <- c("1","price_queens")
+col.df1 <- as.data.frame(price_queens)
+col.df1<-head(col.df1,50)
+basket <- cbind(col.df,col.df1)
+basket<-basket[,c(2,4)]
+head(basket) # Contains prices of Brooklyn and Queens
+#variances Test using var.test
+var.test(basket$price_brooklyn,basket$price_queens)
+#2 sided T test with unequal variances
+t.test(basket$price_brooklyn, basket$price_queens, var.equal = FALSE)
+#scatter plot to see correlation between prices of Brooklyn and Queens
+# The result shows that the p-value is an extremely small number (<0.05) so we can reject Null hypothesis
+library(ggplot2)
+ggplot(basket, aes(x=(price_brooklyn), y=(price_queens))) +
+  geom_point(shape=1) +    # Use hollow circles
+  geom_smooth(method=lm,   # Add linear regression line
+              se=FALSE)    # Don't add shaded confidence region
+#Using Boxplot to identify outliers and eliminating them using the Inter quartile range function
+boxplot(basket)$out
+outliers <- function(x) {
+  Q1 <- quantile(x, probs=.25)
+  Q3 <- quantile(x, probs=.75)
+  iqr = Q3-Q1
+  upper_limit = Q3 + (iqr*1.5)
+  lower_limit = Q1 - (iqr*1.5)
+  x > upper_limit | x < lower_limit
+}
+remove_outliers <- function(df, cols = names(df)) {
+  for (col in cols) {
+    df <- df[!outliers(df[[col]]),]
+  }
+  df
+}
+basket_new<- remove_outliers(basket, c('price_brooklyn', 'price_queens'))
+boxplot(basket_new)
+#After removing outliers run the variances test to check if 2 variables have same variances or not using F test
+var.test(basket_new$price_brooklyn, basket_new$price_queens)
+#Run a 2 sided T test with unequal variances to accept or reject Null hypothesis
+t.test (basket_new$price_brooklyn, basket_new$price_queens, var.equal = FALSE)
+#scatter plot to see negative correlation between prices of Brooklyn and Queens
+# The result shows that the p-value is an extremely small number (<0.05) so we can reject Null hypothesis same as original analysis
+ggplot(basket_new, aes(x=(price_brooklyn), y=(price_queens))) +
+  geom_point(shape=1) +    # Use hollow circles
+  geom_smooth(method=lm,   # Add linear regression line
+              se=FALSE)
+### Missing Values Completely at Random : Using Simframe
+#install.packages("simFrame")
+library(simFrame)
+nac<-NAControl(NArate=0.2)
+x<-setNA(NYC,nac)
+neighbourhood_MAR=as.factor(x$neighbourhood_group) 
+mymatrix_MAR=matrix(c(neighbourhood_MAR,x$price),ncol = 2,byrow = F)
+
+## method: delete missing values
+newdata=na.omit(mymatrix_MAR)
+price_brooklyn_MAR=newdata[which(newdata[,1]==2),]
+price_queens_MAR=newdata[which(newdata[,1]==4),]
+
+###check equal variance assumption
+var.test(price_brooklyn_MAR[,2],price_queens_MAR[,2])
+##conclusion: the p-value is extremely small. Implies unequal variance.
+
+###two sample t-test with unequal variance
+t.test(price_brooklyn_MAR[,2],price_queens_MAR[,2],var.equal = FALSE)
+
+### Missing Values Completely at Random using Mice package
+library(mice) ###using Mice function
+miss_data.hyp2<-ampute(basket_new,mech="MCAR",prop=0.2) ### using 20% proportion in the ampute() function
+md.MCAR.hyp2<-miss_data.hyp2$amp
+which(is.na(md.MCAR.hyp2)=="TRUE")
+summary(md.MCAR.hyp2) #shows a summary of data of how many Null values inserted
+#Using library VIM to visualize missing data and if there are any patterns
+library (VIM)
+mice_plot_MCAR_2 <- aggr(md.MCAR.hyp2, col=c('navyblue', 'yellow'), numbers=TRUE, sortVars=TRUE,
+                         labels=names(md.MCAR.hyp2), cex.axis=.7, gap=3, ylab=c("Missing data", "Pattern"))
+#Imputing missing data using Mice PMM method (Predictive Mean matching)
+mice_imputes_hyp0.2 = mice(md.MCAR.hyp2, m=5, maxit = 40)
+mice_imputes_hyp0.2$method
+Imputed_data_hyp0.2_MCAR=complete(mice_imputes_hyp0.2,5)
+sapply(Imputed_data_hyp0.2_MCAR, function(x) sum(is.na(x)))
+##Check variances
+var.test(Imputed_data_hyp0.2_MCAR$price_brooklyn,Imputed_data_hyp0.2_MCAR$price_queens)
+#Check 2 sided sample T test
+t.test(Imputed_data_hyp0.2_MCAR$price_brooklyn,Imputed_data_hyp0.2_MCAR$price_queens, var.equal = FALSE)
+library(ggplot2)
+#scatter plot to see negative correlation between prices of Brooklyn and Queens
+ggplot(Imputed_data_hyp0.2_MCAR, aes(x=(price_brooklyn), y=(price_queens))) +
+  geom_point(shape=1) +    # Use hollow circles
+  geom_smooth(method=lm,   # Add linear regression line
+              se=FALSE)
+
+miss_data.hyp3<-ampute(basket_new,mech="MCAR",prop=0.5) ### using 50% proportion
+md.MCAR.hyp3<-miss_data.hyp3$amp
+which(is.na(md.MCAR.hyp3)=="TRUE")
+summary(md.MCAR.hyp3)
+#Using library VIM to visualize missing data and if there are any patterns
+library (VIM)
+mice_plot_MCAR_5 <- aggr(md.MCAR.hyp3, col=c('navyblue', 'yellow'), numbers=TRUE, sortVars=TRUE,
+                         labels=names(md.MCAR.hyp3), cex.axis=.7, gap=3, ylab=c("Missing data", "Pattern"))
+#imputing missing data
+mice_imputes_hyp1 = mice(md.MCAR.hyp3, m=5, maxit = 40)
+mice_imputes_hyp1$method
+Imputed_data_hyp1_MCAR=complete(mice_imputes_hyp1,5)
+sapply(Imputed_data_hyp1_MCAR, function(x) sum(is.na(x)))
+##Check Variances using F test
+var.test(Imputed_data_hyp1_MCAR$price_brooklyn,Imputed_data_hyp1_MCAR$price_queens)
+## 2 sided sample T test
+t.test(Imputed_data_hyp1_MCAR$price_brooklyn, Imputed_data_hyp1_MCAR$price_queens, var.equal = FALSE)
+ggplot(Imputed_data_hyp1_MCAR, aes(x=(price_brooklyn), y=(price_queens))) +
+  geom_point(shape=1) +    # Use hollow circles
+  geom_smooth(method=lm,   # Add linear regression line
+              se=FALSE)    # Don't add shaded confidence region
+
+
+### Missing Values Not at Random
+price_brooklyn_MNAR=replace(price_brooklyn[,2],1:1000,NA)
+# We decided to replace first 1000 values in price in Brooklyn to be missing values
+# Instead of missing at random, this time we made variables missing not at random
+# and keep price in Queens complete.
+new_price_brooklyn_MNAR=na.omit(price_brooklyn_MNAR)
+###check equal variance assumption
+var.test(new_price_brooklyn_MNAR,price_queens[,2])
+##conclusion: the p-value is extremely small. Implies unequal variance.
+
+###two sample t-test with unequal variance
+t.test(new_price_brooklyn_MNAR,price_queens_MAR[,2],var.equal = FALSE)
+
+### Missing Values Not at Random using Mice Function
+library(mice) ###using Mice function
+miss_data.hyp1<-ampute(basket_new,mech="MNAR",prop=0.2) ### using 20% proportion
+md.MNAR.hyp4<-miss_data.hyp1$amp
+which(is.na(md.MNAR.hyp4)=="TRUE")
+summary(md.MNAR.hyp4)
+library (VIM)
+mice_plot_MNAR_2 <- aggr(md.MNAR.hyp4, col=c('navyblue', 'yellow'), numbers=TRUE, sortVars=TRUE,
+                         labels=names(md.MNAR.hyp4), cex.axis=.7, gap=3, ylab=c("Missing data", "Pattern"))
+#Estimating missing data
+mice_imputes_MNAR_0.2 = mice(md.MNAR.hyp4, m=5, maxit = 30)
+mice_imputes_MNAR_0.2$method
+Imputed_data_hyp0.2_MNAR=complete(mice_imputes_MNAR_0.2,5)
+sapply(Imputed_data_hyp0.2_MNAR, function(x) sum(is.na(x)))
+#Check Variances
+var.test(Imputed_data_hyp0.2_MNAR$price_brooklyn,Imputed_data_hyp0.2_MNAR$price_queens)
+#2 sided T test
+t.test(Imputed_data_hyp0.2_MNAR$price_brooklyn, Imputed_data_hyp0.2_MNAR$price_queens, var.equal = FALSE)
+ggplot(Imputed_data_hyp0.2_MNAR, aes(x=(price_brooklyn), y=(price_queens))) +
+  geom_point(shape=1) +    # Use hollow circles
+  geom_smooth(method=lm,   # Add linear regression line
+              se=FALSE)    # Don't add shaded confidence region
+
+
+miss_data.hyp4<-ampute(basket_new,mech="MNAR",prop=0.5) ### using 50% proportion with ampute function
+md.MNAR.hyp5<-miss_data.hyp4$amp
+which(is.na(md.MNAR.hyp5)=="TRUE")
+summary(md.MNAR.hyp5)
+#Visualize missing pattern
+library (VIM)
+mice_plot_MNAR_5 <- aggr(md.MNAR.hyp5, col=c('navyblue', 'yellow'), numbers=TRUE, sortVars=TRUE,
+                         labels=names(md.MNAR.hyp5), cex.axis=.7, gap=3, ylab=c("Missing data", "Pattern"))
+mice_imputes_MNAR_0.5 = mice(md.MNAR.hyp5, m=5, maxit = 30)
+mice_imputes_MNAR_0.5$method
+Imputed_data_hyp0.5_MNAR=complete(mice_imputes_MNAR_0.5,5)
+sapply(Imputed_data_hyp0.5_MNAR, function(x) sum(is.na(x)))
+#Check for variances
+var.test(Imputed_data_hyp0.5_MNAR$price_brooklyn,Imputed_data_hyp0.5_MNAR$price_queens)
+#Check 2 sided T test using unequal variances
+t.test(Imputed_data_hyp0.5_MNAR$price_brooklyn, Imputed_data_hyp0.5_MNAR$price_queens, var.equal = FALSE)
+#ggplot to visualize negative correlation between brooklyn and Queens prices
+ggplot(Imputed_data_hyp0.5_MNAR, aes(x=(price_brooklyn), y=(price_queens))) +
+  geom_point(shape=1) +    # Use hollow circles
+  geom_smooth(method=lm,   # Add linear regression line
+              se=FALSE)    # Don't add shaded confidence region
+
+#Advanced Multi Linear Regression Model
+library(readr)
+library(dplyr)
+library(corrplot)
+library(ggplot2)
+filtered<-NYC[c(10,7,8,11,12,14,15,16)]
+##pearson table(Non numerical factors are not included, e.g. neighbourhood_group and room_type)
+res <- cor(filtered)
+round(res, 2)
+##first linear regression model
+model <- lm(price ~ latitude + longitude + room_type + minimum_nights  + number_of_reviews + reviews_per_month + calculated_host_listings_count+ availability_365 + neighbourhood_group, data = NYC)
+summary(model)
+#Using Anova 
+anova(model)
+#Residual Analysis
+par(mfrow=c(1,3))
+plot(model, which=1, col=c("blue")) # Residuals vs Fitted Plot
+plot(model, which=2, col=c("red"))  # Q-Q Plot
+plot(model, which=3, col=c("blue"))  # Scale-Location Plot
+plot(model, which=5, col=c("blue"))  # Residuals vs Leverage
+
+## second model after removing outliers
+NYC1 <- NYC %>% mutate(id = row_number())
+AB_NYC_2019_model2 <- NYC1 %>% sample_frac(.7) %>% filter(price > 0)
+
+my_data <- AB_NYC_2019_model2 %>% filter(price < quantile(AB_NYC_2019_model2$price, 0.9) & price > quantile(AB_NYC_2019_model2$price, 0.1)) %>% tidyr::drop_na()
+#Running regression 2
+model2 <- lm(log(price) ~ latitude + longitude + room_type + minimum_nights  + number_of_reviews + reviews_per_month + calculated_host_listings_count+ availability_365 + neighbourhood_group, data = my_data)
+summary(model2) #summarize coefficients table
+#ANOVA
+anova(model2)
+#Residual Analysis
+par(mfrow=c(1,3))
+plot(model2, which=1, col=c("blue")) # Residuals vs Fitted Plot
+plot(model2, which=2, col=c("red"))  # Q-Q Plot
+plot(model2, which=3, col=c("blue"))  # Scale-Location Plot
+
+plot(model2, which=5, col=c("blue"))  # Residuals vs Leverage
+
+#Regression on the reduced model
+data.mout<-my_data[c(10,11,12,14,16)] # subsetting data
+#Running regression
+model3 <- lm(price~  minimum_nights +number_of_reviews+reviews_per_month +availability_365  , data =data.mout)
+summary(model3)
+#ANOVA
+anova(model3)
+#Residual Analysis
+par(mfrow=c(1,3))
+plot(model3, which=1, col=c("blue")) # Residuals vs Fitted Plot
+plot(model3, which=2, col=c("red"))  # Q-Q Plot
+plot(model3, which=3, col=c("blue"))  # Scale-Location Plot
+plot(model3, which=5, col=c("blue")) # Residuals vs Leverage
+
+#Missing Completely at Random
+library(mice) ###using Mice function
+library(readr)
+library(dplyr)
+library(corrplot)
+my_data_new <-my_data[c(5,7,8,9,10,11,12,14,15,16)]
+miss_data.hyp2.1<-ampute(my_data_new,mech="MCAR",prop=0.2) ### using 20% proportion
+md.MCAR.hyp3.1<-miss_data.hyp2.1$amp
+which(is.na(md.MCAR.hyp3.1)=="TRUE")
+summary(md.MCAR.hyp3.1)
+#Visualize missing patterns
+#install.packages("VIM")
+library(VIM)
+mice_plot <- aggr(md.MCAR.hyp3.1, col=c('navyblue','yellow'),
+                  numbers=TRUE, sortVars=TRUE,
+                  labels=names(md.MCAR.hyp3.1), cex.axis=.7,gap=3, ylab=c("Missing data","Pattern"))
+#Estimate missing values using Multiple Imputation technique
+sapply(md.MCAR.hyp3.1, function(x) sum(is.na(x)))
+mice_imputes_3 = mice(md.MCAR.hyp3.1, m=4, maxit = 20)
+mice_imputes_3$method
+Imputed_data_3=complete(mice_imputes_3,4)
+sapply(Imputed_data_3, function(x) sum(is.na(x)))
+#Full model regression for MCAR
+model.MCAR <- lm(price ~ latitude + longitude + minimum_nights  + number_of_reviews + reviews_per_month + calculated_host_listings_count+ availability_365 + neighbourhood_group+room_type, data =Imputed_data_3)
+summary(model.MCAR) 
+#ANOVA
+anova(model.MCAR)
+#Regression Diagnostics
+#Residual Analysis
+par(mfrow=c(1,3))
+plot(model.MCAR, which=1, col=c("blue")) #residual vs fitted plot
+plot(model.MCAR, which=2, col=c("red")) #Q-Q plot
+plot(model.MCAR, which=3, col=c("blue")) #Scale-Location plot
+plot(model.MCAR, which=5, col=c("blue")) #residual vs Leverage
+
+#Missing Values not at Random
+miss_data.hyp2.5<-ampute(my_data_new,mech="MNAR",prop=0.2) ### using 20% proportion
+md.MNAR.hyp2.2<-miss_data.hyp2.5$amp
+which(is.na(md.MNAR.hyp2.2)=="TRUE")
+summary(md.MNAR.hyp2.2)
+md.pattern(md.MNAR.hyp2.2)
+#install.packages("VIM") for visualization of missing patterns
+library(VIM)
+mice_plot <- aggr(md.MNAR.hyp2.2, col=c('navyblue','yellow'),
+                  numbers=TRUE, sortVars=TRUE,
+                  labels=names(md.MNAR.hyp2.2), cex.axis=.7,gap=3, ylab=c("Missing data","Pattern"))
+#Estimating missing values
+sapply(md.MNAR.hyp2.2, function(x) sum(is.na(x)))
+mice_imputes_2.2 = mice(md.MNAR.hyp2.2, m=4, maxit = 20)
+mice_imputes_2.2$method
+Imputed_data_2.2=complete(mice_imputes_2.2,4)
+sapply(Imputed_data_2.2, function(x) sum(is.na(x)))
+#Running regression
+model.MNAR.1 <- lm(price ~ latitude + longitude + minimum_nights  + number_of_reviews + reviews_per_month + calculated_host_listings_count+ availability_365 + neighbourhood_group+room_type, data =Imputed_data_2.2)
+summary(model.MNAR.1) 
+#ANOVA
+anova(model.MNAR.1)
+#Regression Diagnostics
+#Residual Analysis
+par(mfrow=c(1,3))
+plot(model.MNAR.1, which=1, col=c("blue")) #residual vs fitted plot
+plot(model.MNAR.1, which=2, col=c("red")) #Q-Q plot
+plot(model.MNAR.1, which=3, col=c("blue")) #Scale-Location plot
+plot(model.MNAR.1, which=5, col=c("blue")) #residual vs Leverage
+
+#missing rate MNAR 50%
+miss_data.hyp2.4<-ampute(my_data_new,mech="MNAR",prop=0.5) ### using 20% proportion
+md.MNAR.hyp3.5<-miss_data.hyp2.4$amp
+which(is.na(md.MNAR.hyp3.5)=="TRUE")
+summary(md.MNAR.hyp3.5)
+md.pattern(md.MNAR.hyp3.5)
+#install.packages("VIM")
+library(VIM)
+mice_plot_5 <- aggr(md.MNAR.hyp3.5, col=c('navyblue','yellow'),
+                    numbers=TRUE, sortVars=TRUE,
+                    labels=names(md.MNAR.hyp3.5), cex.axis=.7,gap=3, ylab=c("Missing data","Pattern"))
+#Full model regression for MCAR
+##linear regression medel
+sapply(md.MNAR.hyp3.5, function(x) sum(is.na(x)))
+mice_imputes_3.5 = mice(md.MNAR.hyp3.5, m=5, maxit = 30)
+mice_imputes_3.5$method
+Imputed_data_3.5=complete(mice_imputes_3.5,5)
+sapply(Imputed_data_3.5, function(x) sum(is.na(x)))
+
+model.MNAR.5 <- lm(price ~ latitude + longitude + minimum_nights  + number_of_reviews + reviews_per_month + calculated_host_listings_count+ availability_365 + neighbourhood_group+room_type, data =Imputed_data_3.5)
+summary(model.MNAR.5) 
+
+#ANOVA
+anova(model.MNAR.5)
+
+#Regression Diagnostics
+#Residual Analysis
+par(mfrow=c(1,3))
+plot(model.MNAR.5, which=1, col=c("blue")) #residual vs fitted plot
+plot(model.MNAR.5, which=2, col=c("red")) #Q-Q plot
+plot(model.MNAR.5, which=3, col=c("blue")) #Scale-Location plot
+plot(model.MNAR.5, which=5, col=c("blue")) #residual vs Leverage
