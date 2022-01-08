@@ -1,2 +1,2 @@
 # Linear_Regression
-Multi Linear Regression Airbnb Data
+We perform a hypothesis testing using Multi Linear Regression of Airbnb rentals of NYC 2019 data. In the code we show dependencies of Prices (dependent variable) with multiple other factors like location, availibility throughout the year, customer prefernces etc. The r squared value tells us the relationship between the factors. W also use t test and F test to show if the prices of Brooklyn vary extensively from prices of Queens in 2019 or not.
